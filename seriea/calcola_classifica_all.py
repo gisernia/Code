@@ -1,114 +1,109 @@
-import requests
+import os
 import csv
+import requests
 from bs4 import BeautifulSoup
-from time import sleep
+from dotenv import load_dotenv
 from collections import defaultdict
 
-# ==========================
-# CONFIGURAZIONE OUTPUT
-# ==========================
+load_dotenv()
 
-OUTPUT_TOTALI = "serie_a_totali.csv"
-OUTPUT_DETTAGLIO = "serie_a_dettaglio_stagioni.csv"
+START_YEAR = int(os.getenv("START_YEAR"))
+END_YEAR = int(os.getenv("END_YEAR"))
+OUTPUT_DETTAGLIO = os.getenv("OUTPUT_DETTAGLIO")
+OUTPUT_TOTALI = os.getenv("OUTPUT_TOTALI")
+BASE_URL = os.getenv("BASE_URL")
+HEADERS = {"User-Agent": os.getenv("HEADERS")}
 
-START_YEAR = 1929   # stagione 1929-30
-END_YEAR = 2024     # ultima stagione completa
 
-BASE_URL = "http://calcio-seriea.net"
-
-# ==========================
-# STRUTTURE DATI
-# ==========================
-
-totali = defaultdict(int)
-stagioni_giocate = defaultdict(set)
-dettaglio = []
-
-# ==========================
-# CICLO STAGIONI
-# ==========================
-
-for year in range(START_YEAR, END_YEAR + 1):
-    stagione = f"{year}-{str(year+1)[-2:]}"
-    url = f"{BASE_URL}/stagione/{stagione}"
-
-    print(f"📥 Scarico stagione {stagione}")
-
+def scarica_classifica(anno):
+    url = BASE_URL.format(start=anno, end=anno)
+    print(f"📥 {anno} → {url}")
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, headers=HEADERS, timeout=15)
         r.raise_for_status()
     except Exception as e:
-        print(f"   ❌ errore: {e}")
-        continue
+        print(f"   ❌ errore download: {e}")
+        return []
 
     soup = BeautifulSoup(r.text, "html.parser")
-    table = soup.find("table")
+    table = soup.find("table", class_="items")
+    if not table or not table.tbody:
+        print(f"   ⚠️ classifica non trovata per {anno}")
+        return []
 
-    if not table:
-        print("   ⚠️ nessuna tabella trovata")
-        continue
+    righe = []
+    td_rows = table.tbody.find_all("tr")
+    tot_squadre = len(td_rows)
 
-    rows = table.find_all("tr")
-    squadre = []
-
-    for row in rows:
-        cols = row.find_all("td")
-        if len(cols) < 2:
+    for tr in td_rows:
+        td_list = tr.find_all("td")
+        if len(td_list) < 9:
             continue
 
-        pos = cols[0].get_text(strip=True)
-        squadra = cols[1].get_text(strip=True)
+        # posizione
+        try:
+            posizione = int(td_list[0].text.strip())
+        except:
+            continue
 
-        if pos.isdigit():
-            squadre.append((int(pos), squadra))
+        # squadra
+        squadra_tag = td_list[2].find("a")
+        squadra = squadra_tag.text.strip() if squadra_tag else ""
 
-    if not squadre:
-        print("   ⚠️ classifica vuota")
-        continue
+        # punti (ultimo td)
+        try:
+            punti = int(td_list[-1].text.strip())
+        except:
+            punti = 0
 
-    squadre.sort(key=lambda x: x[0])
-    N = len(squadre)
-
-    for posizione, squadra in squadre:
-        punti = N - posizione + 1
-
-        totali[squadra] += punti
-        stagioni_giocate[squadra].add(stagione)
-
-        dettaglio.append({
-            "stagione": stagione,
+        righe.append({
+            "stagione": anno,
             "squadra": squadra,
             "posizione": posizione,
-            "squadre_totali": N,
+            "squadre_totali": tot_squadre,
             "punti": punti
         })
 
-    sleep(0.5)
+    return righe
 
-# ==========================
-# SCRITTURA CSV DETTAGLIO
-# ==========================
 
-with open(OUTPUT_DETTAGLIO, "w", newline="", encoding="utf-8") as f:
-    writer = csv.DictWriter(
-        f,
-        fieldnames=["stagione", "squadra", "posizione", "squadre_totali", "punti"]
-    )
-    writer.writeheader()
-    writer.writerows(dettaglio)
+def salva_csv(file, righe):
+    if not righe:
+        return
+    keys = righe[0].keys()
+    with open(file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=keys)
+        writer.writeheader()
+        writer.writerows(righe)
 
-# ==========================
-# SCRITTURA CSV TOTALI
-# ==========================
 
-ranking = sorted(totali.items(), key=lambda x: x[1], reverse=True)
+def calcola_totali(tutte_righe):
+    totali = defaultdict(int)
+    for r in tutte_righe:
+        n = r["squadre_totali"]
+        punti_stagione = n - r["posizione"] + 1
+        totali[r["squadra"]] += punti_stagione
+    # ordina per punti decrescente
+    lista = sorted(totali.items(), key=lambda x: x[1], reverse=True)
+    righe = [{"squadra": s, "punti": p} for s, p in lista]
+    return righe
 
-with open(OUTPUT_TOTALI, "w", newline="", encoding="utf-8") as f:
-    writer = csv.writer(f)
-    writer.writerow(["squadra", "punti_totali", "stagioni"])
-    for squadra, punti in ranking:
-        writer.writerow([squadra, punti, len(stagioni_giocate[squadra])])
 
-print("\n✅ FATTO")
-print(f"📄 creato: {OUTPUT_TOTALI}")
-print(f"📄 creato: {OUTPUT_DETTAGLIO}")
+def main():
+    tutte_righe = []
+    for anno in range(START_YEAR, END_YEAR + 1):
+        righe = scarica_classifica(anno)
+        tutte_righe.extend(righe)
+
+    # salva dettaglio stagione
+    salva_csv(OUTPUT_DETTAGLIO, tutte_righe)
+    print(f"✅ salvato dettaglio stagioni in {OUTPUT_DETTAGLIO}")
+
+    # calcola e salva totali
+    totali = calcola_totali(tutte_righe)
+    salva_csv(OUTPUT_TOTALI, totali)
+    print(f"✅ salvato classifica storica cumulativa in {OUTPUT_TOTALI}")
+
+
+if __name__ == "__main__":
+    main()
