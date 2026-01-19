@@ -17,18 +17,18 @@ HEADERS = {"User-Agent": os.getenv("HEADERS")}
 
 def scarica_classifica(anno):
     url = BASE_URL.format(start=anno, end=anno)
-    print(f"📥 {anno} → {url}")
+    print(f"{anno} → {url}")
     try:
         r = requests.get(url, headers=HEADERS, timeout=15)
         r.raise_for_status()
     except Exception as e:
-        print(f"   ❌ errore download: {e}")
+        print(f"   errore download: {e}")
         return []
 
     soup = BeautifulSoup(r.text, "html.parser")
     table = soup.find("table", class_="items")
     if not table or not table.tbody:
-        print(f"   ⚠️ classifica non trovata per {anno}")
+        print(f"   classifica non trovata per {anno}")
         return []
 
     righe = []
@@ -97,12 +97,12 @@ def main():
 
     # salva dettaglio stagione
     salva_csv(OUTPUT_DETTAGLIO, tutte_righe)
-    print(f"✅ salvato dettaglio stagioni in {OUTPUT_DETTAGLIO}")
+    print(f"salvato dettaglio stagioni in {OUTPUT_DETTAGLIO}")
 
     # calcola e salva totali
     totali = calcola_totali(tutte_righe)
     salva_csv(OUTPUT_TOTALI, totali)
-    print(f"✅ salvato classifica storica cumulativa in {OUTPUT_TOTALI}")
+    print(f"salvato classifica storica cumulativa in {OUTPUT_TOTALI}")
 
 
 if __name__ == "__main__":
