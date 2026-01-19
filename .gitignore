@@ -1,0 +1,13 @@
+# output
+*.csv
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv
+venv/
+
+# OS
+.DS_Store
