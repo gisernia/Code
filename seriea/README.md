@@ -10,7 +10,7 @@ dove N è il numero di squadre in quella stagione.
 
 ## Uso
 ```bash
-python calcola_classifica_storica_serie_a.py
+python calcola_classifica_all.py
 ```
 
 ## Fonte dati
